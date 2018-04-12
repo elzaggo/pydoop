@@ -127,6 +127,11 @@ def private_decode(s):
 
 
 class OpaqueInputSplit(object):
+    @classmethod
+    def from_buffer(cls, buffer):
+        s = StringIO(buffer)
+        return OpaqueInputSplit().read(s)
+
     def __init__(self, code='', payload=''):
         self.code = code
         self.payload = payload

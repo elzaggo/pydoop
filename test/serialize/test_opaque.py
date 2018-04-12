@@ -95,6 +95,21 @@ class TestOpaqueInputSplit(unittest.TestCase):
         self._test_opaque(o, no)
         os.unlink(fname)
 
+    def test_opaque_from_buffer(self):
+        code = "acode222"
+        payload = {'a': 33, 'b': "333"}
+        o = OpaqueInputSplit(code, payload)
+        self.assertEqual(code, o.code)
+        self.assertEqual(payload, o.payload)
+        fname = self._make_random_path('/tmp')
+        with open(fname, 'wb') as f:
+            o.write(f)
+        with open(fname, 'rb') as f:
+            data = f.read()
+            no = OpaqueInputSplit.from_buffer(data)
+        self._test_opaque(o, no)
+        os.unlink(fname)
+
     def test_write_read_opaques(self):
         n = 10
         opaques = self._generate_opaque_splits(n)
