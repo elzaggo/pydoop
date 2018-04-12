@@ -1,13 +1,13 @@
 """
-This example is a more-or-less direct map-reduce reinterpretation of the 
-tensorflow for poets example <FIXME-LINK>.
+This example is a more-or-less direct map-reduce reinterpretation
+of the [tensorflow for poets](FIXME-link) example.
 """
 
 from pydoop.app.submit import (
     add_parser_common_arguments,
     add_parser_arguments)
 from pydoop.app.submit import PydoopSubmitter
-from pydoop.utils import Opaque, write_opaques
+from pydoop.utils.serialize import OpaqueInputSplit, write_opaques
 from pydoop import hdfs
 
 from .ioformat import tuple_writer
@@ -27,22 +27,8 @@ import os
 DEFAULT_NUM_MAPS = 10
 DEFAULT_ARCHITECTURE = 'inception_v3'
 NUM_MAPS_KEY = 'mapreduce.job.maps'
+# FIXME this should be from-ed from pydoop.utils.serialize
 PYDOOP_EXTERNALSPLITS_URI_KEY = 'pydoop.mapreduce.pipes.externalsplits.uri'
-
-def get_categories_data(path):
-    categories = {}
-    for x in os.scandir(path):
-        if x.is_dir():
-            categories[x.name] = [os.path.join(x.path, f)
-                                  for f in os.listdir(x.path)
-                                  if (f.split('.')[-1].lower()
-                                      in ['jpg', 'jpeg'])]
-    return categories
-
-
-def random_shuffle(categories):
-    for k in categories:
-        random.shuffle(categories[k])
 
 
 def make_parser():
@@ -62,6 +48,22 @@ def make_parser():
     return parser
 
 
+def get_categories_data(path):
+    categories = {}
+    for x in os.scandir(path):
+        if x.is_dir():
+            categories[x.name] = [os.path.join(x.path, f)
+                                  for f in os.listdir(x.path)
+                                  if (f.split('.')[-1].lower()
+                                      in ['jpg', 'jpeg'])]
+    return categories
+
+
+def random_shuffle(categories):
+    for k in categories:
+        random.shuffle(categories[k])
+
+
 def add_D_arg(args, arg_name, arg_key):
     val = str(getattr(args, arg_name))
     if args.D is None:
@@ -69,13 +71,6 @@ def add_D_arg(args, arg_name, arg_key):
     elif not any(map(lambda _: _[0] == arg_key,
                  args.D)):
         args.D.append([arg_key, val])
-
-
-def create_directory_and_write_data_file(input_dir, data):
-    # input_dir should not pre-exist
-    hdfs.mkdir(input_dir)
-    # use a random tmp name
-    tuple_writer(data, os.path.join(input_dir, 'samples'))
 
 
 def prepare_and_save_graph(model, graph_path):
@@ -92,7 +87,7 @@ def grouper(iterable, n, fillvalue=None):
 
 def generate_input_splits(uri, n_mappers, images):
     n = len(images) // n_mappers
-    opaques = [Opaque(1, g) for g in grouper(images, n)]
+    opaques = [OpaqueInputSplit(1, g) for g in grouper(images, n)]
     write_opaques(opaques, uri)
 
 
@@ -117,10 +112,10 @@ def main(argv=None):
     args.do_not_use_java_record_writer = True
 
     hdfs.mkdir(args.input)  # FIXME check if it is already there
-    # FIXME change graph_path to an unique file name
     categories = get_categories_data(args.data_dir)
     random_shuffle(categories)
-    graph_path = os.path.join(args.input, '__graph.pb')
+    graph_path = os.path.join(args.input,
+                              '__graph-' + uuid.uuid4().hex + '.pb')
     prepare_and_save_graph(model[args.architecture], graph_path)
     add_D_arg(args, 'num_maps', NUM_MAPS_KEY)
     add_D_arg(args, 'architecture', GRAPH_ARCH_KEY)
@@ -128,7 +123,7 @@ def main(argv=None):
     args.num_reducers = 0
 
     hdfs.mkdir(args.output)  # FIXME check if it is already there
-    # multi-thread
+    # multi-thread on the following
     for name in categories:
         nargs = deepcopy(args)
         nargs.output = os.path.join(nargs.output, name)
