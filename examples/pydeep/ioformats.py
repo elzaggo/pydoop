@@ -8,60 +8,42 @@ An avro implementation would be more elegant, but probably slower.
 import logging
 import pydoop.mapreduce.api as api
 import pydoop.hdfs as hdfs
-from .keys import MODEL_JSON, MODEL_BOTTLENECK_TENSOR_SIZE
+from pydoop.utils.serialize import OpaqueInputSplit
 import json
 import struct
 import numpy as np
+from .keys import (GRAPH_ARCH_KEY, GRAPH_PATH_KEY)
+from .models import model
 
 
 logging.basicConfig()
-LOGGER = logging.getLogger("pydpoets.ioformats")
-LOGGER.setLevel(logging.INFO)
+LOGGER = logging.getLogger("pydeep.ioformats")
+LOGGER.setLevel(logging.LOG)
 
 
 class SamplesReader(api.RecordReader):
-    """Reads a stream of <k><tab><str><nl> and outputs <int>, <str>
-    records.
-    """
+    """FIXME"""
     def __init__(self, context):
         super(SamplesReader, self).__init__(context)
         self.logger = LOGGER.getChild("SamplesReader")
         self.logger.debug('started')
-        self.isplit = context.input_split
-        for a in "filename", "offset", "length":
-            self.logger.debug(
-                "isplit.{} = {}".format(a, getattr(self.isplit, a))
-            )
-        self.file = hdfs.open(self.isplit.filename)
-        self.file.seek(self.isplit.offset)
-        self.bytes_read = 0
-        if self.isplit.offset > 0:
-            discarded = self.file.readline()
-            self.bytes_read += len(discarded)
+        self.isplit = OpaqueInputSplit().read_buffer(context.input_split)
+        self.paths = self.isplit.payload
+        self.n_paths = len(self.paths)
 
     def close(self):
-        self.logger.debug("closing open handles")
-        self.file.close()
-        self.file.fs.close()
+        pass
 
     def next(self):
-        if self.bytes_read > self.isplit.length:
-            raise StopIteration
-        record = self.file.readline()
-        if not record:  # end of file
-            raise StopIteration
-        self.bytes_read += len(record)
-        key, value = record.decode("utf-8").split('\t')
-        # Will, most likely, die here if it encounters a bad record.
-        return (int(key), value)
+        while len(self.paths) > 0:
+            yield (1, self.paths.pop())
 
     def get_progress(self):
-        return min(float(self.bytes_read) / self.isplit.length, 1.0)
+        return float(len(self.paths) / self.n_paths)
 
 
 class BottleneckProjectionsWriter(api.RecordWriter):
     """Write out the bottleneck projection of images as binary records.
-
     The records have the structure <4 bytes integer><n floats>, where
     the first is the image label code, while the second is the result of
     the bottleneck projection.
@@ -87,36 +69,29 @@ class BottleneckProjectionsWriter(api.RecordWriter):
         self.file.close()
         self.file.fs.close()
 
-    def emit(self, key, value):
-        self.file.write(struct.pack('>I', key) + value.tobytes())
+    def emit(self, _, value):
+        self.file.write(value.tobytes())
 
 
 class BottleneckProjectionsReader(api.RecordReader):
     """Read binary records representing bottleneck projection of images.
-
-    The records have the structure <4 bytes integer><n floats>, where
-    the first is the image label code, while the second is the result of
-    the bottleneck projection.
+    BROKEN
     """
-
     def __init__(self, context):
         super(BottleneckProjectionsReader, self).__init__(context)
         self.logger = LOGGER.getChild("BottleneckProjectionsReader")
         self.logger.debug('started')
-        self.isplit = context.input_split
-        for a in "filename", "offset", "length":
-            self.logger.debug(
-                "isplit.{} = {}".format(a, getattr(self.isplit, a))
-            )
+        self.isplit = OpaqueInputSplit().read_buffer(context.input_split)
         jc = context.job_conf
-        model = json.loads(jc[MODEL_JSON])
-        self.bottleneck_tensor_size = model[MODEL_BOTTLENECK_TENSOR_SIZE]
-        self.record_length = 4 + 4 * self.bottleneck_tensor_size
-        remainder = self.isplit.offset % self.record_length
-        self.bytes_read = 0 if remainder == 0 else (self.record_length
-                                                    - remainder)
-        self.file = hdfs.open(self.isplit.filename)
-        self.file.seek(self.isplit.offset + self.bytes_read)
+        m = model[jc[GRAPH_ARCH_KEY]]
+        self.bottleneck_tensor_size = m['bottleneck_tensor_size']
+        self.record_length = 4 * self.bottleneck_tensor_size
+        # now we need to manage creating batches from multiple files
+        # remainder = self.isplit.offset % self.record_length
+        # self.bytes_read = 0 if remainder == 0 else (self.record_length -
+        #                                             remainder)
+        # self.file = hdfs.open(self.isplit.filename)
+        # self.file.seek(self.isplit.offset + self.bytes_read)
 
     def close(self):
         self.logger.debug("closing open handles")

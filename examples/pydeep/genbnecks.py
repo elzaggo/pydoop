@@ -10,11 +10,11 @@ from pydoop.app.submit import PydoopSubmitter
 from pydoop.utils.serialize import OpaqueInputSplit, write_opaques
 from pydoop import hdfs
 
-from .ioformat import tuple_writer
-from .tflow import BottleneckProjector, save_graph
-from .models import model
-from .bworker import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
+from tflow import BottleneckProjector, save_graph
+from models import model
+from keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
 
+from multiprocessing import Process
 from copy import deepcopy
 import sys
 import itertools as it
@@ -27,7 +27,7 @@ import os
 DEFAULT_NUM_MAPS = 10
 DEFAULT_ARCHITECTURE = 'inception_v3'
 NUM_MAPS_KEY = 'mapreduce.job.maps'
-# FIXME this should be from-ed from pydoop.utils.serialize
+# FIXME this should be from pydoop.utils.serialize
 PYDOOP_EXTERNALSPLITS_URI_KEY = 'pydoop.mapreduce.pipes.externalsplits.uri'
 
 
@@ -87,7 +87,7 @@ def grouper(iterable, n, fillvalue=None):
 
 def generate_input_splits(uri, n_mappers, images):
     n = len(images) // n_mappers
-    opaques = [OpaqueInputSplit(1, g) for g in grouper(images, n)]
+    opaques = [OpaqueInputSplit(1, list(g)) for g in grouper(images, n)]
     write_opaques(opaques, uri)
 
 
@@ -124,10 +124,18 @@ def main(argv=None):
 
     hdfs.mkdir(args.output)  # FIXME check if it is already there
     # multi-thread on the following
+    procs = []
     for name in categories:
         nargs = deepcopy(args)
+        nargs.job_name += '-' + name
         nargs.output = os.path.join(nargs.output, name)
-        run_map_job(nargs, unknown_args, categories[name])
+        p = Process(target=run_map_job,
+                    args=[nargs, unknown_args, categories[name]])
+        p.append(p)
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
 
 
 if __name__ == "__main__":

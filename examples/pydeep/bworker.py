@@ -1,19 +1,6 @@
 """\ 
 Process a stream of images into their bottleneck projection for a given
 architecture and a chosen bottleneck tensor.
-
-(label_id, img_path), (label_id, img_path) ... 
--> (label_id, bneck_proj), (label_id, bneck_proj),
-
-where the label_id is an integer.
-
-The resulting output is supposed to be randomly accessed as data blocks
-containing many images, by the retrain network implemented as another
-map-reduce application.
-
-The retrainer will be informed on the total number of labels, and thus it will
-be able to easily create the ground truth vector starting from the label_id.
-
 """
 
 import pydoop.mapreduce.api as api
@@ -23,9 +10,7 @@ from .ioformats import SamplesReader as Reader
 from .ioformats import BottleneckProjectionsWriter as Writer
 from .tflow import BottleneckProjector
 from .models import model
-
-GRAPH_PATH_KEY = 'tensorflow.graph.path'
-GRAPH_ARCH_KEY = 'tensorflow.graph.architecture'
+from .keys import (GRAPH_ARCH_KEY, GRAPH_PATH_KEY)
 
 
 class Mapper(api.Mapper):
