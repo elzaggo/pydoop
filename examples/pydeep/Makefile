@@ -45,10 +45,12 @@ data:
 	-${HDFS_MKDIR} /user/${USER}/${BNECK_INPUT} || :
 	-${HDFS_RMR} /user/${USER}/${BNECK_OUTPUT} || :
 
-genrecords: data
+gen
+
+genbnecks: data
 	${PYTHON} genrecords.py --log-level ${LOGLEVEL}\
-       --num-records ${NUM_RECORDS} --num-maps ${NUM_MAPS}\
-       /user/${USER}/${GENRECORDS_INPUT} /user/${USER}/${GENRECORDS_OUTPUT}
+       --num-maps ${NUM_MAPS}\
+       /user/${USER}/${BNECK_INPUT} /user/${USER}/${BNECK_OUTPUT}
 
 
 run:
